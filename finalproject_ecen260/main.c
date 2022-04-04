@@ -1,5 +1,8 @@
 // TODO: Make sprites and individual indexes to the font table for minus, mult, divide, period
 // TODO: Look at backend and see what period value is and adjust 'period' enum index to meet it or set it manually
+// TODO: REMEMBER: YOU ARE NOT GOING TO HAVE VISUAL HISTORY! once computation is complete,
+// the user must clear the screen with hashtag in order to use again
+// //TODO: Separate GLCD functions to a different file
 
 /* Calculator Button Notes:
  * The number buttons keypad (0-9) should print those numbers on the LCD.
@@ -37,7 +40,7 @@ void GLCD_init(void);
 void GLCD_data_write(unsigned char data);
 void GLCD_command_write(unsigned char data);
 void GLCD_putchar(int c);
-void GLCD_putnumber(char * message, int index);
+void GLCD_putnumber(char computation[], int index);
 void SPI_init(void);
 void SPI_write(unsigned char data);
 //this is for the keypad:
@@ -47,7 +50,7 @@ void evaluate_key();
 void evaluate_operation();
 void put_in_buffer(int index, char given_value);
 void clear_input_buffer();
-void clear_at_cursor();
+void clear_line_at_cursor();
 void display_error();
 void display_computation();
 void align_cursor();
@@ -60,7 +63,7 @@ char error_reported;
 
 enum characters{zero,one,two,three,four,five,six,seven,eight,nine,
   A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V,W,X,Y,Z,
-  period,spacebar,exclamation,asterisk,hashtag,plus,minus,multiply,divide};
+  spacebar,period,exclamation,asterisk,hashtag,plus,minus,multiply,divide};
 
   /*TODO: DON'T forget to find out what hex number '.' (period) actually represents in ascii
     and manually set this period enum to that hex value by moving that enum
@@ -142,7 +145,7 @@ void GLCD_data_write(unsigned char data){
     P6->OUT |= DC;     //enter "command" mode by inverting bit 7!
     /*now we can actually send the data with the SPI protocol!*/
     SPI_write(data);        //send data via SPI
-}
+ }
 
 void GLCD_command_write(unsigned char data){
     /*if we are sending a command, we want our DCline to be in the 'C' mode, or low (look at datasheet GLCD*/
@@ -209,7 +212,7 @@ uint8_t keypad_decode(){
    case 0x08: key = 0x7; break; /* 7 */
    case 0x09: key = 0x8; break; /* 8 */
    case 0x0A: key = 0x9; break; /* 9 */
-   case 0x03: key = plus; /* A */  // Don't set they value to 0xA anymore, make a 'plus'
+   case 0x03: key = plus; break; /* A */  // Don't set they value to 0xA anymore, make a 'plus'
    case 0x07: key = minus; break; /* B */
    case 0x0B: key = multiply; break; /* C */
    case 0x0F: key = divide; break; /* D */
@@ -228,51 +231,46 @@ void evaluate_key(int key){
   extern char calculator_input[][];
   extern char error_reported;
   int operation_pressed = 0; //
-  int value_to_be_printed = 0;
   char value_put_in_buffer = '\0';
   switch (key){
-    case (0x0): value_to_be_printed = zero; value_put_in_buffer = '0'; break;
-    case (0x1): value_to_be_printed = one; value_put_in_buffer = '1'; break;
-    case (0x2): value_to_be_printed = two; value_put_in_buffer = '2'; break;
-    case (0x3): value_to_be_printed = three; value_put_in_buffer = '3'; break;
-    case (0x4): value_to_be_printed = four; value_put_in_buffer = '4'; break;
-    case (0x5): value_to_be_printed = five; value_put_in_buffer = '5'; break;
-    case (0x6): value_to_be_printed = six; value_put_in_buffer = '6'; break;
-    case (0x7): value_to_be_printed = seven; value_put_in_buffer = '7'; break;
-    case (0x8): value_to_be_printed = eight; value_put_in_buffer = '8'; break;
-    case (0x9): value_to_be_printed = nine; value_put_in_buffer = '9'; break;
-    case (0xE): value_to_be_printed = period; value_put_in_buffer = '.';// put '.' in buffer if asterisk ('*') is pressed
-    case (hashtag): clear_at_cursor(); GLCD_setCursor(0,0); clear_input_buffer(); break; // clear input if '#' is pressed
+    case (zero): value_put_in_buffer = '0'; break;
+    case (one): value_put_in_buffer = '1'; break;
+    case (two): value_put_in_buffer = '2'; break;
+    case (three): value_put_in_buffer = '3'; break;
+    case (four): value_put_in_buffer = '4'; break;
+    case (five): value_put_in_buffer = '5'; break;
+    case (six): value_put_in_buffer = '6'; break;
+    case (seven): value_put_in_buffer = '7'; break;
+    case (eight): value_put_in_buffer = '8'; break;
+    case (nine): value_put_in_buffer = '9'; break;
+    case (period): value_put_in_buffer = '.';// put '.' in buffer if asterisk ('*') is pressed
+    case (hashtag): clear_line_at_cursor(); GLCD_setCursor(0,0); clear_input_buffer(); break; // clear input if '#' is pressed
     default:
         operation_pressed = 1;
         switch (key){
-            case (0xA):
-            value_to_be_printed = plus;
+            case (plus):
             value_put_in_buffer = '+';
             break;
 
-            case (0xB):
-            value_to_be_printed = minus;
+            case (minus):
             value_put_in_buffer = '-';
             break;
 
-            case (0xC):
-            value_to_be_printed = multiply;
+            case (divide):
             value_put_in_buffer = 'x';// this is multiply
             break;
 
-            case (0xD):
-            value_to_be_printed = divide;
+            case (multiply):
             value_put_in_buffer = '/';// this is divide
             break;
         }
         /* if an operation is pressed but and an opp. is not loaded yet: put her in buffer!*/
         if (operation_pressed && calculator_input[2][0] == NULL){
-          calculator_input[2][0] = value_put_in_buffer;
+          calculator_input[2][0] = value_put_in_buffer; GLCD_putchar(key);
         }
         // If an operation is pressed and there already is one in buffer: perform computation!
         else if (operation_pressed && calculator_input[2][0] != NULL)
-          evaluate_operation(); return; // make sure to leave the function so we don't print the extra operation!
+          evaluate_operation(); return; // make sure to 'return'/leave the function so we don't print the extra operation!
     }
   /*NOTE: The following is the next step for the numerical values, operations have been taken care of
    Let's break this down:
@@ -289,7 +287,7 @@ void evaluate_key(int key){
 
   /* no matter what happens, regardless if our operation goes into buffer, print it out and
    act like we care. We can only do a single operation so we will throw an error later*/
-  GLCD_putchar(value_to_be_printed);
+  GLCD_putchar(key);
 
 }
 
@@ -327,11 +325,16 @@ void evaluate_operation(){
   extern char error_reported;
   char result_into_char[17];
 
-  //TODO: Check if error, if so, align cursor, print error,and we need to leave TODO: clear buffer and error
+  //TODO: Fix error Handling conditions by maybe implementing switch
   if (error_reported != 0) {
-    void display_error();
+    display_error();
     return;
     }
+  if (calculator_input[0][0] == NULL || calculator_input[1][0] == NULL || calculator_input[2][0] == NULL){
+    display_error();
+    return;
+    }
+
   //TODO: Convert charr arrays to values just for math, not needed for anything else!
   double first_opperand = atoi(calculator_input[0]);
   double second_opperand = atoi(calculator_input[1]);
@@ -347,7 +350,10 @@ void evaluate_operation(){
   align_cursor();
   //TODO: print out result
   snprintf(result_into_char, 16, "%f",result);
-  GLCD_putnumber(result_into_char, 8);
+  GLCD_putnumber(result_into_char, sizeof(result_into_char));
+  clear_input_buffer();
+
+
 }
 
 void align_cursor(){
@@ -361,28 +367,39 @@ void clear_input_buffer(){
     }
 
 /* This needs to define what our array may be saying, and interact with GLCD_putchar*/
-void GLCD_putnumber(char result[], int message_length){
+void GLCD_putnumber(char result[], int result_length){
   //TODO: Don't worry about what GLCD_putchar is doing, all we need to remember to do is:
   //pass one integer value to GLCD_putchar for it to print, it will take care of the rest
   int j;
+  int current_value = 0;
   int value_to_send = 0;
-  for(j = 0; j < 6; j++)
-    switch (result[j]){
-      case ('1'): value_to_send = one;
-      case ('2'): value_to_send = two;
-      case ('3'): value_to_send = three;
-      case ('4'): value_to_send = four;
-      case ('5'): value_to_send = five;
-      case ('6'): value_to_send = six;
-      case ('7'): value_to_send = seven;
-      case ('8'): value_to_send = eight;
-      case ('9'): value_to_send = nine;
-      case ('.'): value_to_send = period;
-      case ('-'): value_to_send = minus;
+  for(j = 0; j < 4; j++){
+      if (result[current_value] != 0x00){
+          switch (result[current_value]){
+            case (0x30): value_to_send = zero; break;
+            case ('1'): value_to_send = one; break;
+            case ('2'): value_to_send = two; break;
+            case ('3'): value_to_send = three; break;
+            case ('4'): value_to_send = four; break;
+            case ('5'): value_to_send = five; break;
+            case ('6'): value_to_send = six; break;
+            case ('7'): value_to_send = seven; break;
+            case ('8'): value_to_send = eight; break;
+            case ('9'): value_to_send = nine; break;
+            case (0x2E): value_to_send = period; break;
+            case ('-'): value_to_send = minus; break;
       }
-        GLCD_putchar(value_to_send);
+  }
+     GLCD_putchar(value_to_send); // only if the value is not null we can print it!
+     /*pointer arithmetic! This make sure that the pointer will point to next element in array that was
+     passed into this function. incrementing result[j] won't cut it:*/
+     result++;
 
   }
+
+
+  }
+
 
 void display_error(){
   GLCD_putchar(E);
@@ -395,6 +412,6 @@ void display_error(){
   return;
   }
 
-void clear_at_cursor(){
+void clear_line_at_cursor(){
   ;
   }
