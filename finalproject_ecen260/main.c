@@ -1,3 +1,6 @@
+// TODO: Make sprites and individual indexes to the font table for minus, mult, divide, period
+// TODO: Look at backend and see what period value is and adjust 'period' enum index to meet it or set it manually
+
 /* Calculator Button Notes:
  * The number buttons keypad (0-9) should print those numbers on the LCD.
  * 'A' button (value 0xA) will add
@@ -8,7 +11,8 @@
  * Hashtag (value 0xF) will be enter/compute
  */
 
-#include <stdio.h>
+#include <stdio.h> // for snprintf()
+#include <stdlib.h> // for atio()
 #include <string.h>
 #include "msp.h"
 #include "font_table.h"
@@ -33,29 +37,36 @@ void GLCD_init(void);
 void GLCD_data_write(unsigned char data);
 void GLCD_command_write(unsigned char data);
 void GLCD_putchar(int c);
+void GLCD_putnumber(char * message, int index);
 void SPI_init(void);
 void SPI_write(unsigned char data);
 //this is for the keypad:
 uint8_t keypad_decode();
 
 void evaluate_key();
+void evaluate_operation();
 void put_in_buffer(int index, char given_value);
-void clear_buffer();
+void clear_input_buffer();
+void clear_at_cursor();
+void display_error();
+void display_computation();
 void align_cursor();
-void perform_operation();
-void add_values();
-void multiply_values();
-void subtract_values();
-void divide_values();
-void set_calc_input_null();
 
-
-
-enum characters{spacebar, plus,minus,multiply,divide,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V,W,X,Y,Z,
-    exclamation,rightHalfFace,leftHalfFace,period,
-    zero,one,two,three,four,five,six,seven,eight,nine,asterisk,hashtag};
 
 char calculator_input[3][6]; // store 3 entries of strings, 6 chars long
+extern char character_table[][6];
+//char number_table[][6];
+char error_reported;
+
+enum characters{zero,one,two,three,four,five,six,seven,eight,nine,
+  A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V,W,X,Y,Z,
+  period,spacebar,exclamation,asterisk,hashtag,plus,minus,multiply,divide};
+
+  /*TODO: DON'T forget to find out what hex number '.' (period) actually represents in ascii
+    and manually set this period enum to that hex value by moving that enum
+    to the right spot so they are the same thing*/
+
+
 
 /**
  * main.c
@@ -81,8 +92,8 @@ void main(void){
     NVIC->ISER[1] |= 0x00000020;  // enable Port 3 interrupts
     // Enable Interrupts Generally
     _enable_interrupts();
-    //TODO: define our array buffer to be NULL
-    set_calc_input_null();
+
+    clear_input_buffer();
 
     while (1); // wait for an interrupt
 
@@ -119,9 +130,9 @@ void GLCD_setCursor(unsigned char x, unsigned char y){
 
 /* clears the GLCD by writing zeros to the entire screen */
 void GLCD_clear(void){
-    int i;
-    for(i = 0; i < (GLCD_WIDTH * GLCD_HEIGHT / 8); i++) {
-        GLCD_data_write(0x00);
+  int i;
+  for(i = 0; i < (GLCD_WIDTH * GLCD_HEIGHT / 8); i++) {
+      GLCD_data_write(0x00);
     }
 }
 
@@ -139,13 +150,14 @@ void GLCD_command_write(unsigned char data){
     /*now we can actually send the data with the SPI protocol!*/
     SPI_write(data);        //send data via SPI
 }
-
-// displays a character
+//
+// displays a character, ONLY from font_table. VERY flawed, must replace
 void GLCD_putchar(int c){
-    int i;
-    for(i = 0; i < 6; i++)
-        GLCD_data_write(font_table[c][i]);
+  int i;
+  for(i = 0; i < 6; i++)
+    GLCD_data_write(character_table[c][i]);
 }
+
 
 /*Remember, SPI stands for Serial Peripheral Interface*/
 void SPI_init(void){
@@ -197,18 +209,24 @@ uint8_t keypad_decode(){
    case 0x08: key = 0x7; break; /* 7 */
    case 0x09: key = 0x8; break; /* 8 */
    case 0x0A: key = 0x9; break; /* 9 */
-   case 0x03: key = 0xA; break; /* A */
-   case 0x07: key = 0xB; break; /* B */
-   case 0x0B: key = 0xC; break; /* C */
-   case 0x0F: key = 0xD; break; /* D */
-   case 0x0C: key = 0xE; break; /* * */
-   case 0x0E: key = 0xF; break; /* # */
+   case 0x03: key = plus; /* A */  // Don't set they value to 0xA anymore, make a 'plus'
+   case 0x07: key = minus; break; /* B */
+   case 0x0B: key = multiply; break; /* C */
+   case 0x0F: key = divide; break; /* D */
+   case 0x0C: key = period; break; /* This is supposed to put a decimal point '.' down*/
+   case 0x0E: key = hashtag; break; /* # */
  }
  return key;
 }
 
+/*TODO: Add new calculator functionality. Floating point arithemtic
+ Star should be a decimal point.
+ 'clearing' of the buffer screen to erase mistakes needs to be moved to '#'
+The way we are able to press 'enter' or perform a computation, any operation will follow an operation at
+any given time.*/
 void evaluate_key(int key){
   extern char calculator_input[][];
+  extern char error_reported;
   int operation_pressed = 0; //
   int value_to_be_printed = 0;
   char value_put_in_buffer = '\0';
@@ -223,44 +241,39 @@ void evaluate_key(int key){
     case (0x7): value_to_be_printed = seven; value_put_in_buffer = '7'; break;
     case (0x8): value_to_be_printed = eight; value_put_in_buffer = '8'; break;
     case (0x9): value_to_be_printed = nine; value_put_in_buffer = '9'; break;
-    case (0xE):
-    GLCD_clear();
-    GLCD_setCursor(0,0);
-    set_calc_input_null();
-    break;
-
-    case (0xF): //enter or '#' is pressed
-    perform_operation();
-    align_cursor();
-    break;
-
-    case (0xA):
-    value_to_be_printed = plus;
-    value_put_in_buffer = '+';
-    case (0xB):
-    value_to_be_printed = minus;
-    value_put_in_buffer = '-';
-    case (0xC):
-    value_to_be_printed = multiply;
-    value_put_in_buffer = 'x';// this is multiply
-    case (0xD):
-    value_to_be_printed = divide;
-    value_put_in_buffer = '/';// this is divide
+    case (0xE): value_to_be_printed = period; value_put_in_buffer = '.';// put '.' in buffer if asterisk ('*') is pressed
+    case (hashtag): clear_at_cursor(); GLCD_setCursor(0,0); clear_input_buffer(); break; // clear input if '#' is pressed
     default:
-    operation_pressed = 1;
-    /* if an operation is pressed but already an opp. loaded, just print' her out!*/
-    if (operation_pressed && calculator_input[2][0] == NULL){
-      GLCD_putchar(value_to_be_printed);
-      return;
-      }
-    /* else, save the operation AND print out value!*/
-    else{
-      calculator_input[2][0] = value_put_in_buffer;
-      GLCD_putchar(value_to_be_printed);
-      return;
-    }
+        operation_pressed = 1;
+        switch (key){
+            case (0xA):
+            value_to_be_printed = plus;
+            value_put_in_buffer = '+';
+            break;
 
- }
+            case (0xB):
+            value_to_be_printed = minus;
+            value_put_in_buffer = '-';
+            break;
+
+            case (0xC):
+            value_to_be_printed = multiply;
+            value_put_in_buffer = 'x';// this is multiply
+            break;
+
+            case (0xD):
+            value_to_be_printed = divide;
+            value_put_in_buffer = '/';// this is divide
+            break;
+        }
+        /* if an operation is pressed but and an opp. is not loaded yet: put her in buffer!*/
+        if (operation_pressed && calculator_input[2][0] == NULL){
+          calculator_input[2][0] = value_put_in_buffer;
+        }
+        // If an operation is pressed and there already is one in buffer: perform computation!
+        else if (operation_pressed && calculator_input[2][0] != NULL)
+          evaluate_operation(); return; // make sure to leave the function so we don't print the extra operation!
+    }
   /*NOTE: The following is the next step for the numerical values, operations have been taken care of
    Let's break this down:
   Our calculator can only do 2 opperand math. The only way we know which operrand is which is
@@ -270,23 +283,15 @@ void evaluate_key(int key){
   /* if there's sign already present, save as first opp.*/
   if (calculator_input[2][0] == NULL)
     put_in_buffer(0, value_put_in_buffer);
-
   /* Else if there is an operation loaded in, load it into into second row */
   else
     put_in_buffer(1, value_put_in_buffer);
 
-  /* No matter what happens doe, print her out!*/
+  /* no matter what happens, regardless if our operation goes into buffer, print it out and
+   act like we care. We can only do a single operation so we will throw an error later*/
   GLCD_putchar(value_to_be_printed);
 
 }
-
-void set_calc_input_null(){
-    extern char calculator_input[][];
-    memset(calculator_input, 0, sizeof(calculator_input[0][0]) * 6 * 3);
-    //calculator_input[3][6] == { NULL };
-}
-
-
 
 void PORT3_IRQHandler(void){
  uint8_t key = 0;
@@ -306,7 +311,7 @@ void PORT3_IRQHandler(void){
   * the first row, the operation to the third row, and the second number they put in to the 2nd row*/
 void put_in_buffer(int index, char given_value){
   int i;
-    char sentinel = '\0';
+  char sentinel = '\0';
   extern char calculator_input[][];
   for (i = 0; i < 6; i++)
     if (calculator_input[index][i] == sentinel){
@@ -317,10 +322,79 @@ void put_in_buffer(int index, char given_value){
       continue;
 }
 
-void perform_operation(){
+void evaluate_operation(){
+  extern char calculator_input[][];
+  extern char error_reported;
+  char result_into_char[17];
+
+  //TODO: Check if error, if so, align cursor, print error,and we need to leave TODO: clear buffer and error
+  if (error_reported != 0) {
+    void display_error();
+    return;
+    }
+  //TODO: Convert charr arrays to values just for math, not needed for anything else!
+  double first_opperand = atoi(calculator_input[0]);
+  double second_opperand = atoi(calculator_input[1]);
+  double result;
+  //TODO: Calculate
+  switch (calculator_input[2][0]){
+    case ('+'): result = first_opperand + second_opperand; break;
+    case ('-'): result = first_opperand - second_opperand; break;
+    case ('x'): result = first_opperand * second_opperand; break;
+    case ('%'): result = first_opperand / second_opperand; break;
+    }
+  //TODO: after we compute our value, we need to put our cursor the next line over and then print value
+  align_cursor();
+  //TODO: print out result
+  snprintf(result_into_char, 16, "%f",result);
+  GLCD_putnumber(result_into_char, 8);
+}
+
+void align_cursor(){
   ;
   }
 
-void align_cursor(){
+void clear_input_buffer(){
+    extern char calculator_input[][];
+    memset(calculator_input, 0, sizeof(calculator_input[0][0]) * 6 * 3); // * 6 * 3 mean rows and cols of 2-D array
+    //calculator_input[3][6] == { NULL };
+    }
+
+/* This needs to define what our array may be saying, and interact with GLCD_putchar*/
+void GLCD_putnumber(char result[], int message_length){
+  //TODO: Don't worry about what GLCD_putchar is doing, all we need to remember to do is:
+  //pass one integer value to GLCD_putchar for it to print, it will take care of the rest
+  int j;
+  int value_to_send = 0;
+  for(j = 0; j < 6; j++)
+    switch (result[j]){
+      case ('1'): value_to_send = one;
+      case ('2'): value_to_send = two;
+      case ('3'): value_to_send = three;
+      case ('4'): value_to_send = four;
+      case ('5'): value_to_send = five;
+      case ('6'): value_to_send = six;
+      case ('7'): value_to_send = seven;
+      case ('8'): value_to_send = eight;
+      case ('9'): value_to_send = nine;
+      case ('.'): value_to_send = period;
+      case ('-'): value_to_send = minus;
+      }
+        GLCD_putchar(value_to_send);
+
+  }
+
+void display_error(){
+  GLCD_putchar(E);
+  GLCD_putchar(R);
+  GLCD_putchar(R);
+  GLCD_putchar(O);
+  GLCD_putchar(R);
+  GLCD_putchar(exclamation);
+  error_reported = 0;
+  return;
+  }
+
+void clear_at_cursor(){
   ;
   }
