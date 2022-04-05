@@ -30,11 +30,10 @@ void evaluate_key();
 void evaluate_operation();
 void put_in_buffer(int index, char given_value);
 void clear_input_buffer();
-void clear_line_at_cursor();
 void display_error();
 void display_computation(float result);
-void align_cursor();
 void display_title();
+void display_titlescreen();
 void refresh_interface();
 void GLCD_putnumber(char computation[]);
 
@@ -51,6 +50,7 @@ char handle[] = "@jodango";
 char equal_sign[] = "=";
 char message_to_clear1[] = "PRESS '#'";
 char message_to_clear2[] = "TO CLEAR";
+char title1header[] = "MSP432 CALC.";
 
 
 enum characters{zero,one,two,three,four,five,six,seven,eight,nine,
@@ -91,7 +91,7 @@ void main(void){
     _enable_interrupts();
 
     // NOT USED: clear_input_buffer();
-    display_title();
+    display_titlescreen();
 
     while (1); // wait for an interrupt
 
@@ -111,7 +111,8 @@ void PORT3_IRQHandler(void){
 
     /*TODO: If waiting for keypress, and if returned key was 'clear' or hashtag*/
     if (at_cutscene && key == hashtag){
-        at_cutscene = 0; refresh_interface(); return;
+        at_cutscene = 0; refresh_interface(); display_title();
+        return;
  }
     else if (at_cutscene && key != hashtag){return;}
     else{evaluate_key(key);}
@@ -183,7 +184,8 @@ void evaluate_key(int key){
     case (eight): value_put_in_buffer = '8'; break;
     case (nine): value_put_in_buffer = '9'; break;
     case (period): value_put_in_buffer = '.'; break;  // put '.' in buffer if asterisk ('*') is pressed
-    case (hashtag): clear_line_at_cursor(); GLCD_setCursor(0,0); clear_input_buffer(); break; // clear input if '#' is pressed
+    case (hashtag): GLCD_clear(); display_title();
+ clear_input_buffer(); return; // clear input if '#' is pressed
     default:
         operation_pressed = 1;
         switch (key){
@@ -367,6 +369,7 @@ void GLCD_putnumber(char result[]){
 
 
 void display_error(){
+  GLCD_setCursor(20,2);
   GLCD_putchar(E);
   GLCD_putchar(R);
   GLCD_putchar(R);
@@ -374,33 +377,42 @@ void display_error(){
   GLCD_putchar(R);
   GLCD_putchar(exclamation);
   error_reported = 0;
+  at_cutscene = 1;
+  clear_input_buffer();
   return;
+
   }
 
-void clear_line_at_cursor(){
-  ;
-  }
 
 void display_title(){
-
   GLCD_setCursor(4,0);
-  GLCD_putnumber(title1);
+  GLCD_putnumber(title1header);
+  /*every time after display title, put the cursor where it needs to be */
+  GLCD_setCursor(0,1);
 
-  GLCD_setCursor(8,1);
-  GLCD_putnumber(title2);
 
-  GLCD_setCursor(4,2);
-  GLCD_putnumber(title3);
-
-    GLCD_setCursor(8,3);
-    GLCD_putnumber(author);
-
-  GLCD_setCursor(10,5);
-  GLCD_putnumber(handle);
-
-  /* specify that now we are at the title screen */
-  at_cutscene = 1;
 }
+
+void display_titlescreen(){
+    GLCD_setCursor(4,0);
+    GLCD_putnumber(title1);
+
+    GLCD_setCursor(8,1);
+    GLCD_putnumber(title2);
+
+    GLCD_setCursor(4,2);
+    GLCD_putnumber(title3);
+
+      GLCD_setCursor(8,3);
+      GLCD_putnumber(author);
+
+    GLCD_setCursor(10,5);
+    GLCD_putnumber(handle);
+
+    /* specify that now we are at the title screen */
+    at_cutscene = 1;
+}
+
 
 
 void refresh_interface(){
@@ -412,7 +424,7 @@ void refresh_interface(){
 void display_computation(float result){
     char result_into_char[17];
 
-    GLCD_setCursor(20,1);
+    GLCD_setCursor(20,2);
     GLCD_putnumber(equal_sign);
 
     /*cast integer to char arrary*/
@@ -420,10 +432,10 @@ void display_computation(float result){
     GLCD_putnumber(result_into_char);
 
     /*prompt to press clear or '#'*/
-    GLCD_setCursor(9,2);
+    GLCD_setCursor(9,3);
     GLCD_putnumber(message_to_clear1);
 
-    GLCD_setCursor(9,3);
+    GLCD_setCursor(9,4);
     GLCD_putnumber(message_to_clear2);
 
     /*Make sure to clear out our inputs*/
