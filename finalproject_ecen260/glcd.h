@@ -21,7 +21,6 @@ void GLCD_init(void);
 void GLCD_data_write(unsigned char data);
 void GLCD_command_write(unsigned char data);
 void GLCD_putchar(int c);
-void GLCD_putnumber(char computation[], int index);
 
 
 // TODO: determine if you can delete these

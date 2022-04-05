@@ -36,6 +36,7 @@ void display_computation(float result);
 void align_cursor();
 void display_title();
 void refresh_interface();
+void GLCD_putnumber(char computation[]);
 
 
 char calculator_input[3][6]; // store 3 entries of strings, 6 chars long
@@ -48,7 +49,9 @@ char title3[] = "AUTHOR: ";
 char author[] = "DANIEL GOMEZ";
 char handle[] = "@jodango";
 char equal_sign[] = "=";
-char message_to_clear[] = "PRESS # TO CLEAR";
+char message_to_clear1[] = "PRESS #";
+char message_to_clear2[] = "TO CLEAR";
+
 
 enum characters{zero,one,two,three,four,five,six,seven,eight,nine,
   A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V,W,X,Y,Z,
@@ -152,7 +155,7 @@ uint8_t keypad_decode(){
    case 0x07: key = minus; break; /* B */
    case 0x0B: key = multiply; break; /* C */
    case 0x0F: key = divide; break; /* D */
-   case 0x0C: key = period; break; /* This is supposed to put a decimal point '.' down*/
+   case 0x0C: key = period; break; /* The star button is supposed to put a decimal point '.' down*/
    case 0x0E: key = hashtag; break; /* # */
  }
  return key;
@@ -289,13 +292,12 @@ void clear_input_buffer(){
     }
 
 /* This needs to define what our array may be saying, and interact with GLCD_putchar*/
-void GLCD_putnumber(char result[], int result_length){
-  int j;
-  int current_value = 0;
+void GLCD_putnumber(char result[]){
+  int index = 0;
   int value_to_send = 0;
-  for(j = 0; j < result_length - 1; j++){
-      if (result[current_value] != 0x00){
-          switch (result[current_value]){
+  while (result[index] != 0x00){
+
+          switch (result[index]){
             case (0x30): value_to_send = zero; break;
             case ('1'): value_to_send = one; break;
             case ('2'): value_to_send = two; break;
@@ -353,13 +355,13 @@ void GLCD_putnumber(char result[], int result_length){
             case (':'): value_to_send = colon; break;
             case ('='): value_to_send = equalsign; break;
           }
+          GLCD_putchar(value_to_send); // only if the value is not null we can print it!
+                /*pointer arithmetic! This make sure that the pointer will point to next element in array that was
+                  passed into this function. incrementing result[j] won't cut it:*/
+                result++;
       }
-      GLCD_putchar(value_to_send); // only if the value is not null we can print it!
-      /*pointer arithmetic! This make sure that the pointer will point to next element in array that was
-        passed into this function. incrementing result[j] won't cut it:*/
-      result++;
+
   }
-}
 
 
 void display_error(){
@@ -380,19 +382,19 @@ void clear_line_at_cursor(){
 void display_title(){
 
   GLCD_setCursor(4,0);
-  GLCD_putnumber(title1, sizeof(title1));
+  GLCD_putnumber(title1);
 
   GLCD_setCursor(8,1);
-  GLCD_putnumber(title2, sizeof(title2));
+  GLCD_putnumber(title2);
 
   GLCD_setCursor(4,2);
-  GLCD_putnumber(title3, sizeof(title3));
+  GLCD_putnumber(title3);
 
     GLCD_setCursor(8,3);
-    GLCD_putnumber(author, sizeof(author));
+    GLCD_putnumber(author);
 
   GLCD_setCursor(10,5);
-  GLCD_putnumber(handle, sizeof(handle));
+  GLCD_putnumber(handle);
 
   /* specify that now we are at the title screen */
   at_cutscene = 1;
@@ -409,15 +411,18 @@ void display_computation(float result){
     char result_into_char[17];
 
     GLCD_setCursor(20,1);
-    GLCD_putnumber(equal_sign, sizeof(equal_sign));
+    GLCD_putnumber(equal_sign);
 
     /*cast integer to char arrary*/
     snprintf(result_into_char, 16, "%0.2f", result);
-    GLCD_putnumber(result_into_char, sizeof(result_into_char));
+    GLCD_putnumber(result_into_char);
 
     /*prompt to press clear or '#'*/
     GLCD_setCursor(9,2);
-    GLCD_putnumber(message_to_clear, sizeof(message_to_clear));
+    GLCD_putnumber(message_to_clear1);
+
+    GLCD_setCursor(9,3);
+    GLCD_putnumber(message_to_clear2);
 
     /*Make sure to clear out our inputs*/
     clear_input_buffer();
