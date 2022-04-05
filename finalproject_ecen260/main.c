@@ -22,6 +22,7 @@
 #include "glcd.h"
 
 
+
 //this is for the keypad:
 uint8_t keypad_decode();
 
@@ -31,18 +32,29 @@ void put_in_buffer(int index, char given_value);
 void clear_input_buffer();
 void clear_line_at_cursor();
 void display_error();
-void display_computation();
+void display_computation(float result);
 void align_cursor();
 void display_title();
+void refresh_interface();
 
 
 char calculator_input[3][6]; // store 3 entries of strings, 6 chars long
 char error_reported;
+int at_cutscene = 0;
+
+char title1[] = "MSP432 -";
+char title2[] = "CALCULATOR";
+char title3[] = "AUTHOR: ";
+char author[] = "DANIEL GOMEZ";
+char handle[] = "@jodango";
+char equal_sign[] = "=";
+char message_to_clear[] = "PRESS # TO CLEAR";
 
 enum characters{zero,one,two,three,four,five,six,seven,eight,nine,
   A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V,W,X,Y,Z,
   spacebar,period,exclamation,asterisk,hashtag,
-  plus,minus,multiply,divide,atsign,lowerj,lowero, lowerd, lowera,lowern,lowerg,colon};
+  plus,minus,multiply,divide,atsign,lowerj,lowero, lowerd, lowera,lowern,lowerg,
+  colon, equalsign};
 
   /*TODO: DON'T forget to find out what hex number '.' (period) actually represents in ascii
     and manually set this period enum to that hex value by moving that enum
@@ -81,6 +93,31 @@ void main(void){
     while (1); // wait for an interrupt
 
 }
+
+
+
+
+void PORT3_IRQHandler(void){
+ uint8_t key = 0;
+
+ if(P3->IFG & DA){ // if there is an interrupt and data available:
+    // Clear interrupt flag for DA
+    P3->IFG &= ~DA;
+    // Read data
+    key = keypad_decode();  // determine which key was pressed
+
+    /*TODO: If waiting for keypress, and if returned key was 'clear' or hashtag*/
+    if (at_cutscene && key == hashtag){
+        at_cutscene = 0; refresh_interface(); return;
+ }
+    else if (at_cutscene && key != hashtag){return;}
+    else{evaluate_key(key);}
+ }
+ //TODO: If the value are any of the operations (mult, add, div), Set off a flag and send the numbers into the proper
+ //function for mult, div, etc.
+ //put_in_buffer(key);
+}
+
 
 
 
@@ -190,19 +227,7 @@ void evaluate_key(int key){
 
 }
 
-void PORT3_IRQHandler(void){
- uint8_t key = 0;
- if(P3->IFG & DA){ // if there is an interrupt and data available:
-    // Clear interrupt flag for DA
-    P3->IFG &= ~DA;
-    // Read data
-    key = keypad_decode();  // determine which key was pressed
-    evaluate_key(key);
- }
- //TODO: If the value are any of the operations (mult, add, div), Set off a flag and send the numbers into the proper
- //function for mult, div, etc.
- //put_in_buffer(key);
-}
+
 
 /*This will assign a value to a part of a given row. The first operand of an operation needs to be assigned
   * the first row, the operation to the third row, and the second number they put in to the 2nd row*/
@@ -222,7 +247,6 @@ void put_in_buffer(int index, char given_value){
 void evaluate_operation(){
   extern char calculator_input[][];
   extern char error_reported;
-  char result_into_char[17];
 
   //TODO: Fix error Handling conditions by maybe implementing switch
   if (error_reported != 0) {
@@ -235,9 +259,9 @@ void evaluate_operation(){
     }
 
   //TODO: Convert charr arrays to values just for math, not needed for anything else!
-  double first_opperand = atoi(calculator_input[0]);
-  double second_opperand = atoi(calculator_input[1]);
-  double result;
+  float first_opperand = atoi(calculator_input[0]);
+  float second_opperand = atoi(calculator_input[1]);
+  float result;
   //TODO: Calculate
   switch (calculator_input[2][0]){
     case ('+'): result = first_opperand + second_opperand; break;
@@ -246,11 +270,10 @@ void evaluate_operation(){
     case ('%'): result = first_opperand / second_opperand; break;
     }
   //TODO: after we compute our value, we need to put our cursor the next line over and then print value
-  align_cursor();
+
   //TODO: print out result
-  snprintf(result_into_char, 16, "%f",result);
-  GLCD_putnumber(result_into_char, sizeof(result_into_char));
-  clear_input_buffer();
+  display_computation(result);
+
 
 
 }
@@ -267,8 +290,6 @@ void clear_input_buffer(){
 
 /* This needs to define what our array may be saying, and interact with GLCD_putchar*/
 void GLCD_putnumber(char result[], int result_length){
-  //TODO: Don't worry about what GLCD_putchar is doing, all we need to remember to do is:
-  //pass one integer value to GLCD_putchar for it to print, it will take care of the rest
   int j;
   int current_value = 0;
   int value_to_send = 0;
@@ -330,6 +351,7 @@ void GLCD_putnumber(char result[], int result_length){
             case ('n'): value_to_send = lowern; break;
             case ('g'): value_to_send = lowerg; break;
             case (':'): value_to_send = colon; break;
+            case ('='): value_to_send = equalsign; break;
           }
       }
       GLCD_putchar(value_to_send); // only if the value is not null we can print it!
@@ -356,21 +378,50 @@ void clear_line_at_cursor(){
   }
 
 void display_title(){
-  char title1[] = "MSP432 -";
+
   GLCD_setCursor(4,0);
   GLCD_putnumber(title1, sizeof(title1));
-  char title2[] = "CALCULATOR";
+
   GLCD_setCursor(8,1);
   GLCD_putnumber(title2, sizeof(title2));
-  char title3[] = "AUTHOR:";
+
   GLCD_setCursor(4,2);
   GLCD_putnumber(title3, sizeof(title3));
 
-  char author[] = "DANIEL GOMEZ";
     GLCD_setCursor(8,3);
     GLCD_putnumber(author, sizeof(author));
 
-  char handle[] = "@jodango";
   GLCD_setCursor(10,5);
   GLCD_putnumber(handle, sizeof(handle));
-  }
+
+  /* specify that now we are at the title screen */
+  at_cutscene = 1;
+}
+
+
+void refresh_interface(){
+    GLCD_clear();
+    GLCD_setCursor(0,0);
+    ;
+}
+
+void display_computation(float result){
+    char result_into_char[17];
+
+    GLCD_setCursor(20,1);
+    GLCD_putnumber(equal_sign, sizeof(equal_sign));
+
+    /*cast integer to char arrary*/
+    snprintf(result_into_char, 16, "%0.2f", result);
+    GLCD_putnumber(result_into_char, sizeof(result_into_char));
+
+    /*prompt to press clear or '#'*/
+    GLCD_setCursor(9,2);
+    GLCD_putnumber(message_to_clear, sizeof(message_to_clear));
+
+    /*Make sure to clear out our inputs*/
+    clear_input_buffer();
+
+    /*Put us through a cutscene event*/
+    at_cutscene = 1;
+}
