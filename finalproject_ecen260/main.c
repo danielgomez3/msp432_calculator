@@ -182,7 +182,7 @@ void evaluate_key(int key){
     case (seven): value_put_in_buffer = '7'; break;
     case (eight): value_put_in_buffer = '8'; break;
     case (nine): value_put_in_buffer = '9'; break;
-    case (period): value_put_in_buffer = '.';// put '.' in buffer if asterisk ('*') is pressed
+    case (period): value_put_in_buffer = '.'; break;  // put '.' in buffer if asterisk ('*') is pressed
     case (hashtag): clear_line_at_cursor(); GLCD_setCursor(0,0); clear_input_buffer(); break; // clear input if '#' is pressed
     default:
         operation_pressed = 1;
@@ -262,8 +262,8 @@ void evaluate_operation(){
     }
 
   //TODO: Convert charr arrays to values just for math, not needed for anything else!
-  float first_opperand = atoi(calculator_input[0]);
-  float second_opperand = atoi(calculator_input[1]);
+  float first_opperand = atof(calculator_input[0]);
+  float second_opperand = atof(calculator_input[1]);
   float result;
   //TODO: Calculate
   switch (calculator_input[2][0]){
