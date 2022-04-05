@@ -17,32 +17,11 @@
 #include <stdio.h> // for snprintf()
 #include <stdlib.h> // for atio()
 #include <string.h>
-#include "msp.h"
-#include "font_table.h"
-
-#define CE  BIT0      // P.6 Chip enable
-#define RESET BIT6    // P6.6 reset
-#define DC  BIT7     // P6.7 data/control (D/!C)
-
-// Our screen (graphic LCD) width etc.
-#define GLCD_WIDTH  84
-#define GLCD_HEIGHT 48
+#include "common.h"
+#include "character_table.h"
+#include "glcd.h"
 
 
-// Port 4 Pins (Keypad Data Pins)
-#define DATAPINS (BIT0|BIT1|BIT2|BIT3)
-#define DA BIT0
-
-// function prototypes:
-void GLCD_setCursor(unsigned char x, unsigned char y);
-void GLCD_clear(void);
-void GLCD_init(void);
-void GLCD_data_write(unsigned char data);
-void GLCD_command_write(unsigned char data);
-void GLCD_putchar(int c);
-void GLCD_putnumber(char computation[], int index);
-void SPI_init(void);
-void SPI_write(unsigned char data);
 //this is for the keypad:
 uint8_t keypad_decode();
 
@@ -54,16 +33,16 @@ void clear_line_at_cursor();
 void display_error();
 void display_computation();
 void align_cursor();
+void display_title();
 
 
 char calculator_input[3][6]; // store 3 entries of strings, 6 chars long
-extern char character_table[][6];
-//char number_table[][6];
 char error_reported;
 
 enum characters{zero,one,two,three,four,five,six,seven,eight,nine,
   A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V,W,X,Y,Z,
-  spacebar,period,exclamation,asterisk,hashtag,plus,minus,multiply,divide};
+  spacebar,period,exclamation,asterisk,hashtag,
+  plus,minus,multiply,divide,atsign,lowerj,lowero, lowerd, lowera,lowern,lowerg,colon};
 
   /*TODO: DON'T forget to find out what hex number '.' (period) actually represents in ascii
     and manually set this period enum to that hex value by moving that enum
@@ -96,94 +75,14 @@ void main(void){
     // Enable Interrupts Generally
     _enable_interrupts();
 
-    clear_input_buffer();
+    // NOT USED: clear_input_buffer();
+    display_title();
 
     while (1); // wait for an interrupt
 
-
-}
-
-void GLCD_init(void){
-    /*In order to send commands to our screen to initialize it, we have to send it using the communication
-     * protocol, which is SPI. We need to initialize SPI*/
-    SPI_init();
-    /*this is in order to send signals with that protocol. These are the 3 wires
-     * that we are using in conjunction with our data wires to send and receive data*/
-    P6->DIR |= (CE | RESET | DC); // p6.0, p6.6, p6.7
-    P6->OUT |= CE;                  // CE will be idle when high
-    P6->OUT &= ~RESET;              // assert reset
-    /*Since our reset is  also active-high so putting it low means reset. Once we put it low, we need to put it high again because it is the active going low that resets it:*/
-    P6->OUT |= RESET;               // de-assert reset
-
-    /*configure the screen*/
-    GLCD_command_write(0x21);   // set extended command mode
-    GLCD_command_write(0xB8);   // set LCD Vip for contrast
-    GLCD_command_write(0x04);   // set temp coefficient
-    GLCD_command_write(0x14);   // set LCD bias mode 1:48
-    GLCD_command_write(0x20);   // set normal command mode
-    GLCD_command_write(0x0C);    // set display normal mode
-
 }
 
 
-void GLCD_setCursor(unsigned char x, unsigned char y){
-    GLCD_command_write(0x80 | x);   // column
-    GLCD_command_write(0x40 | y);   // bank (8 rows per bank)
-}
-
-/* clears the GLCD by writing zeros to the entire screen */
-void GLCD_clear(void){
-  int i;
-  for(i = 0; i < (GLCD_WIDTH * GLCD_HEIGHT / 8); i++) {
-      GLCD_data_write(0x00);
-    }
-}
-
-/* write to GLCD controller data register */
-void GLCD_data_write(unsigned char data){
-    /*if we are sending a command, we want our DCline to be in the 'C' mode, or low (look at datasheet GLCD*/
-    P6->OUT |= DC;     //enter "command" mode by inverting bit 7!
-    /*now we can actually send the data with the SPI protocol!*/
-    SPI_write(data);        //send data via SPI
- }
-
-void GLCD_command_write(unsigned char data){
-    /*if we are sending a command, we want our DCline to be in the 'C' mode, or low (look at datasheet GLCD*/
-    P6->OUT &= ~DC;     //enter "command" mode by inverting bit 7!
-    /*now we can actually send the data with the SPI protocol!*/
-    SPI_write(data);        //send data via SPI
-}
-//
-// displays a character, ONLY from font_table. VERY flawed, must replace
-void GLCD_putchar(int c){
-  int i;
-  for(i = 0; i < 6; i++)
-    GLCD_data_write(character_table[c][i]);
-}
-
-
-/*Remember, SPI stands for Serial Peripheral Interface*/
-void SPI_init(void){
-    EUSCI_B0->CTLW0 = 0x0001;   // put UCB0 in reset mode
-    EUSCI_B0->CTLW0 = 0x69C1;   // PH=0, PL=1, MSB first, Master, SPI, SMCLK
-    EUSCI_B0->BRW = 3;          // 3 MHz / 3 = 1MHz
-    EUSCI_B0->CTLW0 &= ~0x001;  // enable UCB0 after config
-
-    P1->SEL0 |= BIT5 | BIT6;
-    P1->SEL1 &= ~(BIT5 | BIT6);
-
-    P6->DIR |= (CE | RESET | DC); // P6.7, P6.6, P6.0 set as output
-    P6->OUT |= CE;                // CE idle high
-    P6->OUT &= ~RESET;            // assert reset
-}
-
-void SPI_write(unsigned char data){
-    /* to send serial data, last lab we sent it using the Tx buffer!*/
-    P6->OUT &= ~CE;               // assert /CE
-    EUSCI_B0->TXBUF = data;       // write data
-    while(EUSCI_B0->STATW & BIT0); // wait for transmit done
-    P6->OUT |= CE;                  // deassert it cuz we are done
-}
 
 
 
@@ -373,7 +272,7 @@ void GLCD_putnumber(char result[], int result_length){
   int j;
   int current_value = 0;
   int value_to_send = 0;
-  for(j = 0; j < 4; j++){
+  for(j = 0; j < result_length - 1; j++){
       if (result[current_value] != 0x00){
           switch (result[current_value]){
             case (0x30): value_to_send = zero; break;
@@ -386,19 +285,59 @@ void GLCD_putnumber(char result[], int result_length){
             case ('7'): value_to_send = seven; break;
             case ('8'): value_to_send = eight; break;
             case ('9'): value_to_send = nine; break;
+            case ('A'): value_to_send = A; break;
+            case ('B'): value_to_send = B; break;
+            case ('C'): value_to_send = C; break;
+            case ('D'): value_to_send = D; break;
+            case ('E'): value_to_send = E; break;
+            case ('F'): value_to_send = F; break;
+            case ('G'): value_to_send = G; break;
+            case ('H'): value_to_send = H; break;
+            case ('I'): value_to_send = I; break;
+            case ('J'): value_to_send = J; break;
+            case ('K'): value_to_send = K; break;
+            case ('L'): value_to_send = L; break;
+            case ('M'): value_to_send = M; break;
+            case ('N'): value_to_send = N; break;
+            case ('O'): value_to_send = O; break;
+            case ('P'): value_to_send = P; break;
+            case ('Q'): value_to_send = Q; break;
+            case ('R'): value_to_send = R; break;
+            case ('S'): value_to_send = S; break;
+            case ('T'): value_to_send = T; break;
+            case ('U'): value_to_send = U; break;
+            case ('V'): value_to_send = V; break;
+            case ('W'): value_to_send = W; break;
+            case ('X'): value_to_send = X; break;
+            case ('Y'): value_to_send = Y; break;
+            case ('Z'): value_to_send = Z; break;
+
+            case (' '): value_to_send = spacebar; break;
             case (0x2E): value_to_send = period; break;
+            case ('!'): value_to_send = exclamation; break;
+            case ('*'): value_to_send = asterisk; break;
+            case ('#'): value_to_send = hashtag; break;
+
+            case ('+'): value_to_send = plus; break;
             case ('-'): value_to_send = minus; break;
+            case ('x'): value_to_send = multiply; break;
+            case ('%'): value_to_send = divide; break;
+            case ('@'): value_to_send = atsign; break;
+            case ('j'): value_to_send = lowerj; break;
+            case ('o'): value_to_send = lowero; break;
+            case ('d'): value_to_send = lowerd; break;
+            case ('a'): value_to_send = lowera; break;
+            case ('n'): value_to_send = lowern; break;
+            case ('g'): value_to_send = lowerg; break;
+            case (':'): value_to_send = colon; break;
+          }
       }
+      GLCD_putchar(value_to_send); // only if the value is not null we can print it!
+      /*pointer arithmetic! This make sure that the pointer will point to next element in array that was
+        passed into this function. incrementing result[j] won't cut it:*/
+      result++;
   }
-     GLCD_putchar(value_to_send); // only if the value is not null we can print it!
-     /*pointer arithmetic! This make sure that the pointer will point to next element in array that was
-     passed into this function. incrementing result[j] won't cut it:*/
-     result++;
-
-  }
-
-
-  }
+}
 
 
 void display_error(){
@@ -414,4 +353,24 @@ void display_error(){
 
 void clear_line_at_cursor(){
   ;
+  }
+
+void display_title(){
+  char title1[] = "MSP432 -";
+  GLCD_setCursor(4,0);
+  GLCD_putnumber(title1, sizeof(title1));
+  char title2[] = "CALCULATOR";
+  GLCD_setCursor(8,1);
+  GLCD_putnumber(title2, sizeof(title2));
+  char title3[] = "AUTHOR:";
+  GLCD_setCursor(4,2);
+  GLCD_putnumber(title3, sizeof(title3));
+
+  char author[] = "DANIEL GOMEZ";
+    GLCD_setCursor(8,3);
+    GLCD_putnumber(author, sizeof(author));
+
+  char handle[] = "@jodango";
+  GLCD_setCursor(10,5);
+  GLCD_putnumber(handle, sizeof(handle));
   }
