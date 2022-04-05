@@ -49,7 +49,7 @@ char title3[] = "AUTHOR: ";
 char author[] = "DANIEL GOMEZ";
 char handle[] = "@jodango";
 char equal_sign[] = "=";
-char message_to_clear1[] = "PRESS #";
+char message_to_clear1[] = "PRESS '#'";
 char message_to_clear2[] = "TO CLEAR";
 
 
@@ -57,7 +57,7 @@ enum characters{zero,one,two,three,four,five,six,seven,eight,nine,
   A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V,W,X,Y,Z,
   spacebar,period,exclamation,asterisk,hashtag,
   plus,minus,multiply,divide,atsign,lowerj,lowero, lowerd, lowera,lowern,lowerg,
-  colon, equalsign};
+  colon, equalsign, singlequote};
 
   /*TODO: DON'T forget to find out what hex number '.' (period) actually represents in ascii
     and manually set this period enum to that hex value by moving that enum
@@ -196,11 +196,11 @@ void evaluate_key(int key){
             break;
 
             case (divide):
-            value_put_in_buffer = 'x';// this is multiply
+            value_put_in_buffer = '%';// this is multiply
             break;
 
             case (multiply):
-            value_put_in_buffer = '/';// this is divide
+            value_put_in_buffer = 'x';// this is divide
             break;
         }
         /* if an operation is pressed but and an opp. is not loaded yet: put her in buffer!*/
@@ -354,6 +354,8 @@ void GLCD_putnumber(char result[]){
             case ('g'): value_to_send = lowerg; break;
             case (':'): value_to_send = colon; break;
             case ('='): value_to_send = equalsign; break;
+            case (0x27): value_to_send = singlequote; break;
+
           }
           GLCD_putchar(value_to_send); // only if the value is not null we can print it!
                 /*pointer arithmetic! This make sure that the pointer will point to next element in array that was
